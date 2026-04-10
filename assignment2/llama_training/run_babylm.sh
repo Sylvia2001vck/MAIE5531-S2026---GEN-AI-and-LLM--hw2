@@ -5,9 +5,9 @@ python -u run_llama.py \
   --run_name run6-fix-loss \
   --option pretrain \
   --data_path train_100M \
-  --block_size  128 \
-  --batch_size 128 \
-  --micro_batch_size 16 \
+  --block_size  256 \
+  --batch_size 512 \
+  --micro_batch_size 32 \
   --epochs 1 \
   --max_steps 300 \
   --log_every_steps 10 \
