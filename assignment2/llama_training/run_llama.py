@@ -352,9 +352,6 @@ def train(args):
     optimizer.zero_grad()
 
     for epoch in tqdm(epoch_iter):
-        if hasattr(args, 'max_steps') and args.max_steps is not None and global_step >= args.max_steps:
-            print(f"Reached max_steps = {args.max_steps}, stopping training.")
-            break
         model.train()
         train_loss = 0.0
         num_batches = 0
@@ -430,8 +427,9 @@ def train(args):
                 pbar.update(1)
 
                 if hasattr(args, 'max_steps') and args.max_steps is not None and global_step >= args.max_steps:
-                    print(f"Reached max_steps = {args.max_steps}, stopping training.")
-                    break
+                    print(f"\n✅ Reached max_steps = {args.max_steps}, training stopped!")
+                    pbar.close()
+                    return
 
                 denom = accumulated_token_count if accumulated_token_count > 0 else 1
                 step_token_loss = accumulated_token_loss / denom

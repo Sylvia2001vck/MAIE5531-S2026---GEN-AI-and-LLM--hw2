@@ -1,7 +1,7 @@
-# If you don't want to use WANDB for logging, simply ignore this line and the script will still print out metrics
-export WANDB_API_KEY=YOUR_WANDB_API_KEY
+# Uncomment and set a real key only if you want wandb logging.
+# export WANDB_API_KEY=your_real_wandb_api_key
 
-python run_llama.py \
+python -u run_llama.py \
   --run_name run6-fix-loss \
   --option pretrain \
   --data_path train_100M \
@@ -17,7 +17,7 @@ python run_llama.py \
   --val_per_steps 50 \
   --test_path  test \
   --test_tokenized_dir test/tokenized \
-  --auto_resume \
   --warmup_ratio 0.1 \
   --lr 1e-3 
+# Add --auto_resume only when you intentionally want to continue a prior run.
 # --overwrite_tokenized # if you want to overwrite the tokenized data
