@@ -2,6 +2,7 @@ import json
 import math
 import os
 import random
+import sys
 from array import array
 from bisect import bisect_right
 from contextlib import nullcontext
@@ -29,7 +30,8 @@ from utils import (
 )
 
 
-TQDM_DISABLE = False
+TQDM_DISABLE = not sys.stdout.isatty()
+TOKENIZE_PROGRESS_EVERY_LINES = 50000
 # fix the random seed
 def seed_everything(seed=11711):
 	random.seed(seed)
@@ -131,17 +133,22 @@ class PretrainingSequenceDataset(Dataset):
 
 def tokenize_text_file(input_path: Path, output_path: Path, tokenizer: Tokenizer) -> int:
 	token_buffer = array('H')
+	print(f"Tokenizing {input_path} -> {output_path}")
 	with open(input_path, 'r', encoding='utf-8') as fp:
-		for line in fp:
+		for line_idx, line in enumerate(fp, start=1):
 			text = line.strip()
 			if not text:
+				if line_idx % TOKENIZE_PROGRESS_EVERY_LINES == 0:
+					print(f"  processed {line_idx} lines from {input_path.name}...")
 				continue
 			tokens = tokenizer.encode(text, bos=True, eos=True)
 			token_buffer.extend(tokens)
+			if line_idx % TOKENIZE_PROGRESS_EVERY_LINES == 0:
+				print(f"  processed {line_idx} lines from {input_path.name}...")
 	with open(output_path, 'wb') as out:
 		token_buffer.tofile(out)
 	token_count = len(token_buffer)
-	print(f"Tokenized {input_path} -> {output_path} ({token_count} tokens)")
+	print(f"Finished tokenizing {input_path.name}: {token_count} tokens")
 	return token_count
 
 
@@ -156,15 +163,21 @@ def preprocess_pretraining_corpus(data_path: str, tokenizer: Tokenizer, tokenize
 	for pattern in patterns:
 		input_files.extend(data_dir.glob(pattern))
 	seen = set()
+	unique_input_files = []
 	for input_file in sorted(input_files):
 		if input_file.name in seen or input_file.is_dir():
 			continue
 		seen.add(input_file.name)
+		unique_input_files.append(input_file)
+	total_files = len(unique_input_files)
+	for file_idx, input_file in enumerate(unique_input_files, start=1):
 		output_file = output_dir / f"{input_file.stem}.bin"
+		print(f"[{file_idx}/{total_files}] preparing {input_file.name}")
 		if overwrite or not output_file.exists():
 			token_count = tokenize_text_file(input_file, output_file, tokenizer)
 		else:
 			token_count = output_file.stat().st_size // np.dtype(np.uint16).itemsize
+			print(f"Using cached tokens for {input_file.name}: {token_count} tokens")
 		metadata['files'].append({
 			'source': str(input_file),
 			'token_file': output_file.name,
@@ -307,6 +320,13 @@ def train(args):
         warmup_steps = min(warmup_steps, total_expected_updates)
 
     lr_scheduler = WarmupLearningRateScheduler(base_lr, warmup_steps)
+    log_every_steps = max(1, getattr(args, 'log_every_steps', 10))
+    print(
+        "Training setup: "
+        f"epochs={args.epochs}, updates_per_epoch={updates_per_epoch}, "
+        f"warmup_steps={warmup_steps}, max_steps={args.max_steps}, "
+        f"log_every_steps={log_every_steps}"
+    )
 
     resume_checkpoint_path = None
     resume_state = {}
@@ -352,6 +372,7 @@ def train(args):
     optimizer.zero_grad()
 
     for epoch in tqdm(epoch_iter):
+        print(f"\n=== Epoch {epoch + 1}/{args.epochs} started ===")
         model.train()
         train_loss = 0.0
         num_batches = 0
@@ -426,11 +447,6 @@ def train(args):
                 updates_completed_in_epoch += 1
                 pbar.update(1)
 
-                if hasattr(args, 'max_steps') and args.max_steps is not None and global_step >= args.max_steps:
-                    print(f"\n✅ Reached max_steps = {args.max_steps}, training stopped!")
-                    pbar.close()
-                    return
-
                 denom = accumulated_token_count if accumulated_token_count > 0 else 1
                 step_token_loss = accumulated_token_loss / denom
                 train_loss += step_token_loss
@@ -444,8 +460,22 @@ def train(args):
                         'avg_tok_loss': f'{avg_token_loss:.4f}',
                     }
                 )
+                current_lr = optimizer.param_groups[0]['lr']
+                if global_step == 1 or global_step % log_every_steps == 0:
+                    print(
+                        f"epoch {epoch + 1}/{args.epochs} | "
+                        f"step {global_step}/{total_expected_updates or '?'} | "
+                        f"epoch_step {updates_completed_in_epoch}/{gradient_updates_this_epoch} | "
+                        f"lr {current_lr:.6g} | "
+                        f"step_loss {step_token_loss:.4f} | avg_loss {avg_token_loss:.4f}"
+                    )
+
+                if hasattr(args, 'max_steps') and args.max_steps is not None and global_step >= args.max_steps:
+                    print(f"\n✅ Reached max_steps = {args.max_steps}, training stopped!")
+                    pbar.close()
+                    return
+
                 if wandb_run:
-                    current_lr = optimizer.param_groups[0]['lr']
                     wandb_run.log(
                         {
                             'train/token_loss_step': step_token_loss,

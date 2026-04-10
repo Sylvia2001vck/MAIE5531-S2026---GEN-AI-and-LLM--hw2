@@ -10,6 +10,7 @@ python -u run_llama.py \
   --micro_batch_size 16 \
   --epochs 1 \
   --max_steps 300 \
+  --log_every_steps 10 \
   --tokenized_dir train_100M/tokenized \
   --use_gpu  \
   --val_path dev \

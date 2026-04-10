@@ -27,6 +27,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--max_steps", type=int, default=None)
     parser.add_argument(
+        "--log_every_steps",
+        type=int,
+        default=10,
+        help="Print plain-text training progress every N optimizer update steps",
+    )
+    parser.add_argument(
         "--option",
         type=str,
         choices=("generate", "pretrain"),
